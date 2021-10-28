@@ -1,0 +1,382 @@
+<!DOCTYPE HTML>
+<html xmlns:v-bind="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>聊天窗口</title>
+    <script src="./js/jquery.min.js"></script>
+    <script src="./js/canvi.js"></script>
+    <script src="./js/layui.all.js"></script>
+    <link rel="stylesheet" type="text/css" href="./css/demo.css" />
+    <link rel="stylesheet" type="text/css" href="./css/normalize.css" />
+    <link rel="stylesheet" type="text/css" href="./css/canvi.css" />
+    <link rel="stylesheet" type="text/css" href="./css/login.css" />
+    <link rel="stylesheet" type="text/css" href="./css/layui.css" />
+    <link rel="stylesheet" href="./css/jquery.mCustomScrollbar.min.css"/>
+    <script src="./js/jquery.mousewheel-3.0.6.min.js"></script>
+    <script src="./js/jquery.mCustomScrollbar.min.js"></script>
+    <script src="./js/vue.min.js"></script>
+    <script src="./js/common.variate.js"></script>
+</head>
+
+<body style="background-color: rgb(230, 230, 230)">
+    <aside id="aside" class="myCanvasNav canvi-navbar" data-position="left" data-push-content="false" style="width: 100vw;" inert="" aria-hidden="true">
+        <div id="canvi" class="canvi-user-info" style="padding-top: 20px;padding-bottom: 20px;">
+            <div class="canvi-user-info__data">
+                <span id="activeRoom" class="canvi-user-info__title">房间号:</span>
+                <a id="activeUser" class="canvi-user-info__meta">用户</a><br>
+            </div>
+
+        </div>
+        <ul id="left-sidebar" class="canvi-navigation">
+        </ul>
+    </aside>
+
+    <main class="js-canvi-content canvi-content"></main>
+
+    <div>
+        <button id="btn" style="display: none" class="js-canvi-open-button--left btn">查看在线人数</button>
+        <div style="display: none;">
+            <div>
+                <span>昵称：</span>
+                <input id="nick" type="text">
+            </div>
+            <div>
+                <span>房间：</span>
+                <input id="room" type="text">
+            </div>
+            <div>
+                <span>用户id：</span>
+                <input id="userId" type="text">
+            </div>
+        </div>
+
+        <div id="message" style="display: none"></div>
+
+        <div id="footer" class="footer">
+            <div id="toolbar" style="padding: 5px;">
+                <img id="clear" v-bind:title="clearTips" onclick="empty()" src="icon/clear.png" style="width: 23px;margin-left: 10px">
+                <img id="send" v-bind:title="sendTips" onclick="send()" src="icon/send.png" style="width: 24px;position: absolute;right: 10px">
+            </div>
+            <div id="text" contenteditable="true"></div>
+        </div>
+    </div>
+
+    <div class="login" id="window">
+        <div class="login-title">进入房间</div>
+        <div class="login-input-content">
+            <div class="login-input">
+                <label>昵称：</label>
+                <input type="text" placeholder="请输入昵称" id="nickname" class="list-input"/>
+            </div>
+            <div class="login-input">
+                <label>房间：</label>
+                <input type="text" placeholder="请输入房间" onfocus="listRoom(this)" id="roomNo" class="list-input" list="room-list"/>
+                <datalist id="room-list"></datalist>
+            </div>
+        </div>
+        <div class="login-button" onclick="enterInto()"><a style="text-decoration:none;color:#ffffff;" href="javascript:void(0);" id="login-button-submit">进入</a></div>
+    </div>
+</body>
+
+<script type="text/javascript">
+    window.onfocus = function() {
+        focus = false;
+    };
+    window.onblur = function() {
+        focus = true;
+    };
+    //IE
+    document.onfocusin = function() {
+        focus = false;
+    };
+    document.onfocusout = function() {
+        focus = true;
+    };
+
+    //判断当前浏览器是否支持WebSocket
+    if('WebSocket' in window){
+        websocket = new WebSocket(host);
+    }else{
+        layer.msg(unSupportWsMsg, {anim: 6})
+    }
+    //建立连接成功回调方法
+    websocket.onopen = function(event){
+        self.setInterval("ping()", 55000);
+    }
+    //接收到消息回调方法
+    websocket.onmessage = function(event){
+        var data = JSON.parse(event.data)
+        var message = data.message;
+        var nickname = data.sendUser;
+        switch(data.type){
+            case 'init':
+                getOnlineUser(document.getElementById('room').value);
+                layer.msg(message);
+                break;
+            case 'message':
+                renderHtml(nickname, message);
+                break;
+            case 'bing':
+                document.getElementById('userId').value = data.id;
+                $('body').css("background-image", "url(" + message + ")");
+                break;
+            default:
+                break;
+        }
+    }
+    //关闭连接回调方法
+    websocket.onclose = function(){
+        layer.alert(oncloseMsg, {icon: 2});
+        $("#footer").animate({bottom: '-200px'}, 400);
+
+    }
+    //连接发生异常回调方法
+    websocket.onerror = function(){
+        layer.msg(onerrorMsg, {anim: 6});
+    }
+
+    //监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常
+    window.onbeforeunload = function(){
+        layer.alert("手动关闭窗口了...");
+        websocket.close();
+    }
+
+    //监听按钮
+    $(document).keydown(function(event) {
+        // 回车键发送消息
+        if (event.keyCode === 13) {
+            var top = $("#window").css('top');
+            console.log(top);
+            var value = top.substring(0, top.length - 2);
+            console.log(value);
+            if(value > 0){
+                enterInto();
+            }else{
+                send();
+                return false;
+            }
+        }
+    });
+
+    function listRoom(object){
+        $.ajax({
+            type: "POST",
+            url: "/chat/listRoom",
+            dataType: "json",
+            success: function(data){
+                var roomList = data.roomList;
+                $("#room-list").empty();
+                if (roomList.length > 0){
+                    layer.tips("双击或点这里可选择已存在的房间", object);
+                }
+                roomList.forEach(function (roomNo) {
+                    var html = '<option value="' + roomNo + '">';
+                    $("#room-list").append(html);
+                });
+            }
+        });
+    }
+
+    //获得当前房间中的所有用户
+    function getOnlineUser(roomNo){
+        $.ajax({
+            type: "POST",
+            url: "/chat/listOnlineUser",
+            data: {
+                roomNo: roomNo
+            },
+            dataType: "json",
+            success: function(data){
+                if (data.onlineNum > 0){
+                    var onlineUser = data.onlineUser;
+                    $("#left-sidebar").html("");
+                    onlineUser.forEach(function (user) {
+                        if (user.id != $("#userId").val()){
+                            var html = '<li>\n' +
+                                '                <a class="canvi-navigation__item">\n' +
+                                '                    <span  id="user-' + user.id + '" class="canvi-navigation__icon-wrapper" style="background: #00ce46;">\n' +
+                                '                        <span class="canvi-navigation__icon icon-iconmonstr-code-13"></span>\n' +
+                                '                    </span>\n' +
+                                '                    <span class="canvi-navigation__text">' + user.nickname + '</span>\n' +
+                                '                </a>\n' +
+                                '            </li>';
+                            $("#left-sidebar").append(html);
+                        }else {
+                            var html = '<li>\n' +
+                                '                <a class="canvi-navigation__item">\n' +
+                                '                    <span  id="user-' + user.id + '" class="canvi-navigation__icon-wrapper" style="background:#FF3A43;">\n' +
+                                '                        <span class="canvi-navigation__icon icon-iconmonstr-code-13"></span>\n' +
+                                '                    </span>\n' +
+                                '                    <span class="canvi-navigation__me_text">本人</span>\n' +
+                                '                </a>\n' +
+                                '            </li>';
+                            $("#left-sidebar").append(html);
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    //发送进入房间ajax请求，并再模拟#btn的点击事件，以弹出侧边栏
+    function enterInto() {
+        var nickname = $("#nickname").val();
+        var roomNo = $("#roomNo").val();
+        document.getElementById('nick').value = nickname;
+        document.getElementById('room').value = roomNo;
+        if (nickname === "" || roomNo === ""){
+            layer.msg("房间号和昵称不能为空！",{anim: 6});
+            return;
+        }
+        $.ajax({
+            type: "POST",
+            url: "/chat/enter",
+            data: {
+                roomNo: roomNo,
+                nickname:nickname
+            },
+            dataType: "json",
+            success: function(data){
+                //房间已存在但昵称重复
+                if(data.code === 1){
+                    layer.msg(data.message, {anim: 6});
+                    document.getElementById('nickname').value = '';
+                    return;
+                }else{
+                    renderUser(nickname, roomNo);
+                }
+            }
+        });
+    }
+
+    //根据昵称，房间号渲染
+    function renderUser(nickname, roomNo){
+        var map = new Map();
+        map.set("type", "init");
+        map.set("nickname", nickname);
+        map.set("roomNo", roomNo);
+        websocket.send(mapToString(map));
+        document.getElementById('text').innerHTML = null;
+        document.getElementById('activeRoom').innerText = '房间：' + roomNo;
+        document.getElementById('activeUser').innerText = '昵称：' + nickname;
+        $('#btn').trigger("click");
+        getOnlineUser(document.getElementById('room').value);
+        $('body').css("background-image", "none");
+        $("#window").animate({top: '-100%'}, 500);
+        $("#footer").animate({bottom: '0px'}, 400);
+        $("#message").show();
+    }
+
+    //发送消息
+    function send(){
+        var messageBak = document.getElementById('text').innerHTML;
+        var nickname = document.getElementById('nick').value;
+        var message = document.getElementById('text').innerHTML;
+        if(message != null && message != ""){
+            message = message.replace(/"/g, "'");
+            var map = new Map();
+            map.set("type", "message");
+            map.set("message", message);
+            var value = mapToString(map);
+            if(value.length < 8000){
+                websocket.send(value);
+                document.getElementById('text').innerHTML = null;
+                renderHtmlByUser(nickname, message);
+            }else{
+                $("#text").html(messageBak);
+                layer.msg("文本太长了，少写一点吧😭", {anim: 6});
+            }
+        }else{
+            layer.msg("发空消息是什么意思呢？🤔", {anim: 6});
+        }
+    }
+
+    //清空消息
+    function empty(){
+        layer.msg('是否清空消息？', {
+            anim: 6,
+            time: 0, //不自动关闭
+            btn: ['确定', '取消'],
+            yes: function(index){
+                layer.close(index);
+                $("#message").empty();
+            }
+        });
+    }
+
+    //将消息显示在网页上
+    function renderHtml(nickname, message){
+        var html = '<div class="botui-message-left"><div class="botui-message-content shake-constant shake-constant--hover">';
+        $("#message").append("<div class='sendUser'><b>" + nickname + "</b></div>" + html + message + div);
+        scrollDown();
+        $(".botui-message-content").animate({'margin-left':'0px'}, 200);
+    }
+
+    //将自己发的消息显示在网页上
+    function renderHtmlByUser(nickname, message){
+        var html = '<div class="botui-message-right"><div  class="botui-message-content2 shake-constant shake-constant--hover">';
+        $("#message").append("<div class='sendUser' style='text-align: right;'><b>" + nickname + "</b></div>" + html + message + div);
+        scrollDown();
+        $(".botui-message-content2").animate({'margin-right':'0px'}, 200);
+    }
+
+    //发送消息后自动滚到底部
+    function scrollDown(){
+        var html = $("html,body").height()-$(window).height();
+        $("html, body").animate({scrollTop: html}, 200);
+    }
+
+    function mapToString(map) {
+        var str = "{";
+        map.forEach(function (value, key) {
+            str += '"' + key + '"' + ':' + '"' + value + '",';
+        })
+        str = str.substring(0, str.length-1)
+        str += "}";
+        return str;
+    }
+
+    //服务端如果用nginx做转发，可能会因'proxy_read_timeout'配置的过短而自动断开连接，默认是一分钟，所以发送心跳连接，保证不聊天的状态下不会断开
+    function ping(){
+        var map = new Map();
+        map.set("type", "ping");
+        websocket.send(mapToString(map));
+    }
+
+    var t = new Canvi({
+        content: ".js-canvi-content",
+        isDebug: !1,
+        navbar: ".myCanvasNav",
+        openButton: ".js-canvi-open-button--left",
+        position: "left",
+        pushContent: !1,
+        speed: "0.2s",
+        width: "100vw",
+        responsiveWidths: [ {
+            breakpoint: "600px",
+            width: "21%"
+        }, {
+            breakpoint: "1280px",
+            width: "21%"
+        }, {
+            breakpoint: "1600px",
+            width: "21%"
+        } ]
+    })
+
+    new Vue({
+            el: '#toolbar',
+            data: {
+                clearTips : clearTips,
+                sendTips : sendTips,
+            }
+        })
+
+    new Vue({
+        el: '#canvi',
+        data: {
+            msgSwitchTips : msgSwitchTips
+        }
+    })
+</script>
+</html>
