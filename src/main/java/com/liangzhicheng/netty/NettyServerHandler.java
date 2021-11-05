@@ -47,7 +47,7 @@ public class NettyServerHandler extends SimpleChannelInboundHandler<TextWebSocke
         Map<String, String> result = Socket.instance().onMessage(message.text(), session);
         if (Objects.nonNull(result) && Objects.nonNull(result.get("type"))) {
             switch (result.get("type")) {
-                case " ":
+                case "init":
                     SessionMap.instance().set(result, session);
                     break;
                 case "message":
